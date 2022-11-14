@@ -1,0 +1,56 @@
+stages:
+  - build_spa
+  - build_and_push_docker_image
+
+#---------------------------------------------------
+spa-build:
+  stage: build_spa
+  image: node:16
+  script:
+    - cd spa_vue2
+    - npm install
+    - npm run build
+  artifacts:
+    paths:
+      - spa_vue2/dist/
+  only:
+    refs:
+      - master
+
+#---------------------------------------------------
+docker-build:
+  #Falls der Runner auf K8S nicht auf tcp anstatt unix sock konfiguriert ist... EVIL!
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: "tcp://localhost:2375"
+
+  stage: build_and_push_docker_image
+  image: docker:git
+  services:
+    - docker:dind
+  
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  
+  script:
+    - mkdir -p app/html/
+    - cp -R spa_vue2/dist/* app/html/
+
+    - sleep 30 #warten bis der docker service auf tcp up ist... LAZY!!!
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]]; then
+        tag=""
+        echo "Running on default branch '$CI_DEFAULT_BRANCH': tag = 'latest'"
+      else
+        tag=":$CI_COMMIT_REF_SLUG"
+        echo "Running on branch '$CI_COMMIT_BRANCH': tag = $tag"
+      fi
+    - docker build -t "$CI_REGISTRY_IMAGE${tag}" .
+    - docker push "$CI_REGISTRY_IMAGE${tag}"
+
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - Dockerfile
+    - if: ($CI_COMMIT_BRANCH == "master")
+

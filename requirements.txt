@@ -1,0 +1,9 @@
+uvicorn
+fastapi
+pydentic
+pydantic[email]
+pymongo
+python-multipart
+pyjwt
+werkzeug
+pillow
